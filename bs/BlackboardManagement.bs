@@ -1,0 +1,333 @@
+MACHINE BlackboardManagement
+
+INCLUDE "Types.bs";
+INCLUDE "ModularManagement.bs";
+INCLUDE "PartitionManagement.bs";
+INCLUDE "ProcessManagement.bs";
+INCLUDE "TimeManagement.bs";
+
+ATTRIBUTES
+	int SYSTEM_NUMBER_OF_BLACKBOARDS;`
+	set<BLACKBOARD_TYPE>@List@ Blackboard_Set;
+	set<WAITING_BLACKBOARD_TYPE>@List@ Waiting_Blackboard_Set;
+
+OPERATIONS
+
+/* 	       CREATE_BLACKBOARD                  */
+
+	 void CREATE_BLACKBOARD (
+		/*in */ BLACKBOARD_NAME_TYPE BLACKBOARD_NAME,
+		/*in */ MESSAGE_SIZE_TYPE MAX_MESSAGE_SIZE,
+		/*out*/ BLACKBOARD_ID_TYPE *BLACKBOARD_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_NAME(BLACKBOARD_NAME))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_MAX_MESSAGE_SIZE(MAX_MESSAGE_SIZE))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		
+		if(SYSTEM_NUMBER_OF_BLACKBOARDS == SYSTEM_LIMIT_NUMBER_OF_BLACKBOARDS )
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+    	/*
+  		if(@.<NAME:BLACKBOARD_NAME>:Blackboard_Set)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+    	}
+    	*/
+      	if(Current_Partition_status.OPERATING_MODE == NORMAL)
+        {	
+        	*RETURN_CODE = INVALID_MODE;
+        	return;
+        }
+
+      	BBoard.<NAME:nil> : Blackboard_Set;
+      	BBoard->EMPTY_INDICATOR = EMPTY;
+      	BBoard->MAX_MESSAGE_SIZE = MAX_MESSAGE_SIZE;
+      	SYSTEM_NUMBER_OF_BLACKBOARDS = SYSTEM_NUMBER_OF_BLACKBOARDS + 1;
+      	*BLACKBOARD_ID = BBoard->ID;
+      	*RETURN_CODE = NO_ERROR;
+	}
+	
+	
+/* 	       DISPLAY_BLACKBOARD               */
+
+	 void DISPLAY_BLACKBOARD (
+		/*in */ BLACKBOARD_ID_TYPE BLACKBOARD_ID,
+		/*in */ MESSAGE_ADDR_TYPE MESSAGE_ADDR, /* by reference */
+		/*in */ MESSAGE_SIZE_TYPE LENGTH,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		MESSAGE_SIZE_TYPE TEMP_LENGTH = 0;
+  		
+  		if(INVALID_ID(BLACKBOARD_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		/*
+		if(~(@.<ID:BLACKBOARD_ID> : Blackboard_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		*/
+		
+		BBoard.<ID:BLACKBOARD_ID >:Blackboard_Set;
+		
+		if(INVALID_LENGTH(LENGTH, BBoard->MAX_MESSAGE_SIZE))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_MESSAGE_ADDR(MESSAGE_ADDR))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		
+
+		BBoard->EMPTY_INDICATOR = OCCUPIED;
+		
+		while(TEMP_LENGTH < LENGTH )
+		{
+  			//*(BBoard.MESSAGE_ADDR + TEMP_LENGTH) = *(MESSAGE_ADDR + TEMP_LENGTH);
+  			TEMP_LENGTH = TEMP_LENGTH + 1;
+		}
+		
+		BBoard->LENGTH = LENGTH;
+		
+		while(WBPro.<BLACKBOARD_ID:BBoard->ID> : Waiting_Blackboard_Set)
+		{
+  			Pro.<ID:WBPro->ID> : Process_Set;
+  			
+  			if(Timer.<ID:Pro->ID> : Waiting_Timer_Set )
+    			_STOP_TIME_COUNTER(Timer->ID); 
+    			
+  			Pro->PROCESS_STATE = READY;
+  			Ready_Process_Set=Ready_Process_Set \-/ {Pro->ID};
+  			Waiting_Blackboard_Set=Waiting_Blackboard_Set -- {WBPro};
+  			Waiting_Process_Set=Waiting_Process_Set -- {Pro->ID};
+  			//suspended??
+  			
+  			if(Current_Partition_status.LOCK_LEVEL == 0)
+    			_Ask_For_Process_Scheduling();
+		}
+		
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+
+/* 	       READ_BLACKBOARD               */
+
+	 void READ_BLACKBOARD (
+		/*in */ BLACKBOARD_ID_TYPE BLACKBOARD_ID,
+		/*in */ SYSTEM_TIME_TYPE TIME_OUT,
+		/*out*/ MESSAGE_ADDR_TYPE MESSAGE_ADDR,
+		/*out*/ MESSAGE_SIZE_TYPE *LENGTH,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		MESSAGE_SIZE_TYPE TEMP_LENGTH = 0;
+  		TIME_OUT_TYPE *Time_Out_Signal;
+  
+		if(INVALID_ID(BLACKBOARD_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_TIME_OUT(TIME_OUT))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		
+		/*
+		if(~(@.<ID:BLACKBOARD_ID> : Blackboard_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		*/
+		
+		BBoard.<ID:BLACKBOARD_ID >:Blackboard_Set;
+
+		if(BBoard->EMPTY_INDICATOR == OCCUPIED)
+		{
+			while(TEMP_LENGTH < BBoard->LENGTH)
+			{
+    			//*(MESSAGE_ADDR + TEMP_LENGTH) = *(BBoard.MESSAGE_ADDR + TEMP_LENGTH);
+    			TEMP_LENGTH = TEMP_LENGTH + 1;
+			}
+			
+			*LENGTH = BBoard->LENGTH;
+			*RETURN_CODE = NO_ERROR;
+			return;
+		}
+		else if(TIME_OUT == 0)
+		{
+  			*LENGTH = 0;
+  			*RETURN_CODE = NOT_AVAILABLE;
+  			return;
+		}
+		else if(Current_Partition_status.LOCK_LEVEL != 0
+				|| Current_Process.ID == ERROR_HANDLER_PROCESS_ID)
+ 		{
+   			*LENGTH = 0;
+   			*RETURN_CODE = INVALID_MODE;
+   			return;
+ 		}
+		else if(TIME_OUT == INFINITE_TIME_VALUE)
+		{
+  			Current_Process.PROCESS_STATE = WAITING;
+  			Running_Process_Set=Running_Process_Set -- {Current_Process.ID};
+  			//Waiting_Blackboard_Set=Waiting_Blackboard_Set \-/ {<Current_Process.ID,BBoard->ID>};
+  			Waiting_Process_Set=Waiting_Process_Set \-/ {Current_Process.ID};
+  			
+  			_Ask_For_Process_Scheduling();
+  			
+			while(TEMP_LENGTH < BBoard->LENGTH)
+			{
+    			//*(MESSAGE_ADDR + TEMP_LENGTH) = *(BBoard.MESSAGE_ADDR + TEMP_LENGTH);
+    			TEMP_LENGTH = TEMP_LENGTH + 1;
+			}
+			
+			*LENGTH = BBoard->LENGTH;
+			*RETURN_CODE = NO_ERROR;
+			return;
+		}
+		else
+		{
+			Current_Process.PROCESS_STATE = WAITING;
+  			Running_Process_Set=Running_Process_Set -- {Current_Process.ID};
+  			//Waiting_Blackboard_Set=Waiting_Blackboard_Set \-/ {<Current_Process.ID,BBoard->ID>};
+  			Waiting_Blackboard_Set++<Current_Process.ID,BBoard->ID>;
+  			//Waiting_Process_Set=Waiting_Process_Set \-/ {Current_Process.ID};
+  			Waiting_Process_Set++Current_Process;
+  			
+  			_CREATE_TIME_COUNTER(TIME_OUT, Current_Process.ID, Time_Out_Signal);
+  			
+  			_Ask_For_Process_Scheduling();		
+			
+			if(*Time_Out_Signal == TRUE)
+			{
+  				*LENGTH = 0;
+				*RETURN_CODE = TIMED_OUT;
+			}
+			else
+			{
+  				while(TEMP_LENGTH < BBoard->LENGTH)
+				{
+    				//*(MESSAGE_ADDR + TEMP_LENGTH) = *(BBoard.MESSAGE_ADDR + TEMP_LENGTH);
+    				TEMP_LENGTH = TEMP_LENGTH + 1;
+				}
+			
+				*LENGTH = BBoard->LENGTH;
+				*RETURN_CODE = NO_ERROR;
+				return;
+			}
+		}
+	}
+
+
+/* 	       CLEAR_BLACKBOARD             */
+
+	 void CLEAR_BLACKBOARD (
+		/*in */ BLACKBOARD_ID_TYPE BLACKBOARD_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		MESSAGE_SIZE_TYPE TEMP_LENGTH = 0;
+  
+		if(INVALID_ID(BLACKBOARD_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		/*
+		if(~(@.<ID:BLACKBOARD_ID> : Blackboard_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		*/
+		
+		BBoard.<ID:BLACKBOARD_ID >:Blackboard_Set;
+
+		BBoard->EMPTY_INDICATOR = EMPTY;
+		while(TEMP_LENGTH < BBoard->MAX_MESSAGE_SIZE)
+		{
+			//*(BBoard.MESSAGE_ADDR + TEMP_LENGTH) = NULL;
+  			TEMP_LENGTH = TEMP_LENGTH + 1;
+		} 
+
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+
+
+/* 	       GET_BLACKBOARD_ID             */
+
+	 void GET_BLACKBOARD_ID (
+		/*in */ BLACKBOARD_NAME_TYPE BLACKBOARD_NAME,
+		/*out*/ BLACKBOARD_ID_TYPE *BLACKBOARD_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+		if(INVALID_NAME(BLACKBOARD_NAME))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		/*
+		if(~(@.<NAME:BLACKBOARD_NAME>:Blackboard_Set))
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+    	*/
+    	
+		BBoard.<NAME:BLACKBOARD_NAME >:Blackboard_Set;
+		
+		*BLACKBOARD_ID = BBoard->ID;
+		*RETURN_CODE = NO_ERROR;
+	}
+
+
+/* 	       GET_BLACKBOARD_STATUS             */
+
+	 void GET_BLACKBOARD_STATUS (
+		/*in */ BLACKBOARD_ID_TYPE BLACKBOARD_ID,
+		/*out*/ BLACKBOARD_STATUS_TYPE *BLACKBOARD_STATUS,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+		if(INVALID_ID(BLACKBOARD_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		/*
+		if(~(@.<ID:BLACKBOARD_ID> : Blackboard_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		*/
+		
+		BBoard.<ID:BLACKBOARD_ID >:Blackboard_Set;
+
+		BLACKBOARD_STATUS->EMPTY_INDICATOR = BBoard->EMPTY_INDICATOR;
+		BLACKBOARD_STATUS->MAX_MESSAGE_SIZE = BBoard->MAX_MESSAGE_SIZE;
+		BLACKBOARD_STATUS->WAITING_PROCESSES = BBoard->WAITING_PROCESSES;
+		*RETURN_CODE = NO_ERROR;
+	}
+
+/* 	       END OF OPERATIONS                  */
+
+END

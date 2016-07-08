@@ -1,0 +1,253 @@
+MACHINE SemaphoreManagement
+
+INCLUDE "Types.bs";
+INCLUDE "ModularManagement.bs";
+INCLUDE "PartitionManagement.bs";
+INCLUDE "ProcessManagement.bs";
+INCLUDE "TimeManagement.bs";
+
+ATTRIBUTES 
+	int SYSTEM_NUMBER_OF_SEMAPHORE;
+	set<SEMAPHORE_TYPE>@List@ Semaphore_Set;
+	set<SEMAPHORE_TYPE>@List@ Waiting_Semaphore_Set;
+
+OPERATIONS
+	
+/* 	       CREATE_SEMAPHORE              */	
+	
+	 void CREATE_SEMAPHORE (
+		/*in */ SEMAPHORE_NAME_TYPE SEMAPHORE_NAME,
+		/*in */ SEMAPHORE_VALUE_TYPE CURRENT_VALUE,
+		/*in */ SEMAPHORE_VALUE_TYPE MAXIMUM_VALUE,
+		/*in */ QUEUING_DISCIPLINE_TYPE QUEUING_DISCIPLINE,
+		/*out*/ SEMAPHORE_ID_TYPE *SEMAPHORE_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_NAME(SEMAPHORE_NAME))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_SEMAPHORE_CURRENT_VALUE(CURRENT_VALUE,MAXIMUM_VALUE))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		if(INVALID_SEMAPHORE_MAXIMUM_VALUE(MAXIMUM_VALUE))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		if(INVALID_QUEUING_DISCIPLINE(QUEUING_DISCIPLINE))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		
+		if(SYSTEM_NUMBER_OF_SEMAPHORE == MAX_NUMBER_OF_SEMAPHORES )
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+  		if(any.<NAME:SEMAPHORE_NAME>:Semaphore_Set)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+    	}
+  		if(Current_Partition_status.OPERATING_MODE == NORMAL)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+    	}
+
+  		Semaphore.<NAME:nil> : Semaphore_Set;
+  		Semaphore->NAME = SEMAPHORE_NAME;
+  		Semaphore->CURRENT_VALUE = CURRENT_VALUE;
+  		Semaphore->MAXIMUM_VALUE = MAXIMUM_VALUE; 
+  		Semaphore->QUEUING_DISCIPLINE = QUEUING_DISCIPLINE; 		
+  		SYSTEM_NUMBER_OF_SEMAPHORE = SYSTEM_NUMBER_OF_SEMAPHORE + 1;
+  		
+		*SEMAPHORE_ID = Semaphore->ID;
+  		*RETURN_CODE = NO_ERROR;
+  		return;
+	}
+	
+
+/* 	       WAIT_SEMAPHORE                  */
+
+	 void WAIT_SEMAPHORE (
+		/*in */ SEMAPHORE_ID_TYPE SEMAPHORE_ID,
+		/*in */ SYSTEM_TIME_TYPE TIME_OUT,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+		TIME_OUT_TYPE *Time_Out_Signal;
+  		
+  		if(INVALID_ID(SEMAPHORE_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		if(~(any.<ID:SEMAPHORE_ID>:Semaphore_Set))
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+    	}
+  		if(INVALID_TIME_OUT(TIME_OUT))
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+    	}
+
+
+		Semaphore.<ID:SEMAPHORE_ID>:Semaphore_Set;
+		
+  		if(Semaphore->CURRENT_VALUE > 0)
+  		{
+			Semaphore->CURRENT_VALUE = Semaphore->CURRENT_VALUE - 1;
+			*RETURN_CODE = NO_ERROR;
+			return;
+ 		}
+ 		else if(TIME_OUT == 0)
+ 		{
+   			*RETURN_CODE = NOT_AVAILABLE;
+   			return;
+   		}
+ 		else if(Current_Partition_status.LOCK_LEVEL != 0
+				|| Current_Process.ID == ERROR_HANDLER_PROCESS_ID)
+   		{	
+   			*RETURN_CODE = INVALID_MODE;
+   			return;
+   		}
+ 		else if(TIME_OUT == INFINITE_TIME_VALUE)
+ 		{
+   			Current_Process.PROCESS_STATE = WAITING;
+   			//Waiting_Semaphore_Set=Waiting_Semaphore_Set \-/ {<Current_Process.ID,Semaphore->ID>};
+   			//at the position specified by the queuing discipline;
+			_Ask_For_Process_Scheduling();
+			*RETURN_CODE = NO_ERROR;
+			return;
+ 		}
+ 		else
+ 		{
+   			Current_Process.STATUS.PROCESS_STATE = WAITING;
+   			//Waiting_Semaphore_Set=Waiting_Semaphore_Set \-/ {<Current_Process.ID,Semaphore->ID>};
+   			//at the position specified by the queuing discipline;
+			_CREATE_TIME_COUNTER(TIME_OUT, Current_Process.ID, Time_Out_Signal); 
+			_Ask_For_Process_Scheduling();
+			
+			if(*Time_Out_Signal == TRUE)
+			{	
+				*RETURN_CODE = TIMED_OUT;
+				return;
+			}
+   			else
+     		{	
+     			*RETURN_CODE = NO_ERROR;
+     			return;
+     		}
+ 		}
+	}
+
+
+/* 	       SIGNAL_SEMAPHORE               */
+
+	 void SIGNAL_SEMAPHORE (
+		/*in */ SEMAPHORE_ID_TYPE SEMAPHORE_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(SEMAPHORE_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		if(~(any.<ID:SEMAPHORE_ID>:Semaphore_Set))
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+    	}
+    	
+    	Semaphore.<ID:SEMAPHORE_ID>:Semaphore_Set;
+    	
+  		if(Semaphore->CURRENT_VALUE == Semaphore->MAXIMUM_VALUE)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+    	}
+
+  		if(Semaphore->WAITING_PROCESSES == 0)
+  		{
+			Semaphore->CURRENT_VALUE = Semaphore->CURRENT_VALUE + 1;
+			*RETURN_CODE = NO_ERROR;
+			return;
+ 		}
+ 		else
+ 		{
+   			//Waiting_Semaphore_Set=Waiting_Semaphore_Set -- {<First_Process.ID,Semaphore->ID>};
+   			
+   			if(Timer.<ID:First_Process.ID>:Waiting_Timer_Set)
+     			_STOP_TIME_COUNTER(Timer->ID); 
+     			
+   			First_Process.PROCESS_STATE = READY;
+   			Waiting_Process_Set=Waiting_Process_Set -- {First_Process.ID};
+   			Ready_Process_Set=Ready_Process_Set \-/ {First_Process.ID};
+   			if(Current_Partition_status.LOCK_LEVEL == 0)
+     			_Ask_For_Process_Scheduling();
+   			*RETURN_CODE = NO_ERROR;
+ 		}
+	}
+	
+				
+/* 	       GET_SEMAPHORE_ID               */
+
+	 void GET_SEMAPHORE_ID (
+		/*in */ SEMAPHORE_NAME_TYPE SEMAPHORE_NAME,
+		/*out*/ SEMAPHORE_ID_TYPE *SEMAPHORE_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_NAME(SEMAPHORE_NAME))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}		
+  		if(~(any.<NAME:SEMAPHORE_NAME>:Semaphore_Set))
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+		
+		Semaphore.<NAME:SEMAPHORE_NAME>:Semaphore_Set;
+		
+  		*SEMAPHORE_ID = Semaphore->ID;
+  		*RETURN_CODE = NO_ERROR;
+	}
+
+/* 	      GET_SEMAPHORE_STATUS            */
+
+	 void GET_SEMAPHORE_STATUS (
+		/*in */ SEMAPHORE_ID_TYPE SEMAPHORE_ID,
+		/*out*/ SEMAPHORE_STATUS_TYPE *SEMAPHORE_STATUS,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(SEMAPHORE_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		if(~(any.<ID:SEMAPHORE_ID>:Semaphore_Set))
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+    	}
+    	
+    	Semaphore.<ID:SEMAPHORE_ID>:Semaphore_Set;
+    	
+  		SEMAPHORE_STATUS->CURRENT_VALUE = Semaphore->CURRENT_VALUE;
+  		SEMAPHORE_STATUS->MAXIMUM_VALUE = Semaphore->MAXIMUM_VALUE;
+		SEMAPHORE_STATUS->WAITING_PROCESSES = Semaphore->WAITING_PROCESSES;
+  		*RETURN_CODE = NO_ERROR;
+	}
+	
+
+/* 	       END OF OPERATIONS                  */
+
+END

@@ -1,0 +1,262 @@
+MACHINE EventManagement
+
+INCLUDE "Types.bs";
+INCLUDE "ModularManagement.bs";
+INCLUDE "PartitionManagement.bs";
+INCLUDE "ProcessManagement.bs";
+INCLUDE "TimeManagement.bs";
+
+ATTRIBUTES
+	int SYSTEM_NUMBER_OF_EVENTS;
+	set<EVENT_TYPE>@List@ Event_Set;
+	set<WAITING_EVENT_TYPE>@List@ Waiting_Event_Set;
+	TIME_OUT_TYPE *Time_Out_Signal;
+
+OPERATIONS
+
+/* 	       CREATE_EVENT               */
+
+	 void CREATE_EVENT (
+		/*in */ EVENT_NAME_TYPE EVENT_NAME,
+		/*out*/ EVENT_ID_TYPE *EVENT_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_NAME(EVENT_NAME))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		if(SYSTEM_NUMBER_OF_EVENTS == MAX_NUMBER_OF_EVENTS)
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+  		if(any.<NAME:EVENT_NAME>:Event_Set)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+    	}
+    	if(Current_Partition_status.OPERATING_MODE == NORMAL)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+    	}
+    	
+  		Event.<NAME:nil>:Event_Set;
+  		Event->NAME = EVENT_NAME;
+		Event->EVENT_STATE = DOWN;
+		Event->WAITING_PROCESSES = 0;
+  		SYSTEM_NUMBER_OF_EVENTS = SYSTEM_NUMBER_OF_EVENTS + 1;
+  		
+  		*EVENT_ID = Event->ID;
+  		*RETURN_CODE = NO_ERROR;
+  		return;
+	}
+
+/* 	       SET_EVENT             */
+
+	 void SET_EVENT (
+		/*in */ EVENT_ID_TYPE EVENT_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(EVENT_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(~(any.<ID:EVENT_ID> : Event_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		
+  		Event.<ID:EVENT_ID>:Event_Set;
+  
+  		Event->EVENT_STATE = UP;
+  		
+  		if(Event->WAITING_PROCESSES > 0)
+  		{	
+  			while(WEPro.<EVENT_ID:Event->ID> : Waiting_Event_Set)
+			{
+  				Pro.<ID:WEPro->ID> : Process_Set;
+  			
+  				if(Timer.<ID:Pro->ID> : Waiting_Timer_Set )
+    				_STOP_TIME_COUNTER(Timer->ID); 
+    			
+  				Pro->PROCESS_STATE = READY;
+  				Ready_Process_Set=Ready_Process_Set \-/ {Pro->ID};
+  				Waiting_Event_Set=Waiting_Event_Set -- {WEPro};
+  				Waiting_Process_Set=Waiting_Process_Set -- {Pro->ID};
+  				Event->WAITING_PROCESSES = Event->WAITING_PROCESSES - 1;
+  				//suspended??
+			}
+		
+			if(Current_Partition_status.LOCK_LEVEL == 0)
+    			_Ask_For_Process_Scheduling();
+    	}
+
+  		*RETURN_CODE = NO_ERROR;
+  		return;
+	}
+	
+
+/* 	       RESET_EVENT             */
+
+	 void RESET_EVENT (
+		/*in */ EVENT_ID_TYPE EVENT_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(EVENT_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(~(any.<ID:EVENT_ID> : Event_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		
+  		Event.<ID:EVENT_ID>:Event_Set;
+  		
+  		Event->EVENT_STATE = DOWN;
+  		*RETURN_CODE = NO_ERROR;
+  		return;
+	}
+
+
+/* 	       WAIT_EVENT                  */
+
+	 void WAIT_EVENT (
+		/*in */ EVENT_ID_TYPE EVENT_ID,
+		/*in */ SYSTEM_TIME_TYPE TIME_OUT,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(EVENT_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(~(any.<ID:EVENT_ID> : Event_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		if(INVALID_TIME_OUT(TIME_OUT))
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+    	
+    	}
+    	
+  		Event.<ID:EVENT_ID>:Event_Set;
+  		
+  		if(Event->EVENT_STATE == UP)
+    	{
+    		*RETURN_CODE = NO_ERROR;
+    		return;
+    	}
+  		else if(TIME_OUT == 0)
+    	{	
+    		*RETURN_CODE = NOT_AVAILABLE;
+    		return;
+    	}
+  		else if(Current_Partition_status.LOCK_LEVEL != 0
+				|| Current_Process.ID == ERROR_HANDLER_PROCESS_ID)
+   		{	
+   			*RETURN_CODE = INVALID_MODE;
+   			return;
+   		}
+ 		else if(TIME_OUT == INFINITE_TIME_VALUE)
+ 		{
+   			Current_Process.PROCESS_STATE = WAITING;
+   			Running_Process_Set=Running_Process_Set -- {Current_Process.ID};
+  			//Waiting_Event_Set=Waiting_Event_Set \-/ {<Current_Process.ID,BBoard.ID>};
+  			Waiting_Process_Set=Waiting_Process_Set \-/ {Current_Process.ID};
+  			
+   			_Ask_For_Process_Scheduling();
+   			*RETURN_CODE = NO_ERROR;
+ 		}
+ 		else
+ 		{
+   			Current_Process.PROCESS_STATE = WAITING;
+   			Running_Process_Set=Running_Process_Set -- {Current_Process.ID};
+  			//Waiting_Event_Set=Waiting_Event_Set \-/ {<Current_Process.ID,BBoard.ID>};
+  			Waiting_Process_Set=Waiting_Process_Set \-/ {Current_Process.ID};
+  			
+			_CREATE_TIME_COUNTER(TIME_OUT, Current_Process.ID, Time_Out_Signal);
+   			
+   			_Ask_For_Process_Scheduling();
+  			
+  			if(*Time_Out_Signal == TRUE)
+			{
+  				//*LENGTH = 0;
+				*RETURN_CODE = TIMED_OUT;
+			}
+			else
+			{
+				*RETURN_CODE = NO_ERROR;
+				return;
+			}
+ 		}
+	}
+	
+
+/* 	       GET_EVENT_ID                  */
+
+	 void GET_EVENT_ID (
+		/*in */ EVENT_NAME_TYPE EVENT_NAME,
+		/*out*/ EVENT_ID_TYPE *EVENT_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_NAME(EVENT_NAME))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(~(any.<NAME:EVENT_NAME>:Event_Set))
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+    	
+		Event.<NAME:EVENT_NAME >:Event_Set;
+
+  		*EVENT_ID = Event->ID;
+		*RETURN_CODE = NO_ERROR;
+  
+	}
+
+
+/* 	       GET_EVENT_STATUS              */
+
+	 void GET_EVENT_STATUS (
+		/*in */ EVENT_ID_TYPE EVENT_ID,
+		/*out*/ EVENT_STATUS_TYPE *EVENT_STATUS,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(EVENT_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(~(any.<ID:EVENT_ID> : Event_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+    	
+  		Event.<ID:EVENT_ID>:Event_Set;
+
+  		EVENT_STATUS->EVENT_STATE = Event->EVENT_STATE;
+		EVENT_STATUS->WAITING_PROCESSES = Event->WAITING_PROCESSES;
+		*RETURN_CODE = NO_ERROR;
+  
+	}
+
+
+/* 	       END OF OPERATIONS                  */
+
+
+END
+

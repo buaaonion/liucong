@@ -1,0 +1,133 @@
+MACHINE TimeManagement
+
+INCLUDE "Types.bs";
+INCLUDE "ModularManagement.bs";
+INCLUDE "PartitionManagement.bs";
+INCLUDE "ProcessManagement.bs";
+
+ATTRIBUTES
+	int NEXT_RELEASE_POINT;
+	int PREVIOUS_RELEASE_POINT;
+	set<TIMER_TYPE>@List@ Waiting_Timer_Set;
+
+OPERATIONS
+	
+/* 	       TIMED_WAIT                */
+
+	 void TIMED_WAIT (
+		 SYSTEM_TIME_TYPE DELAY_TIME,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+		TIME_OUT_TYPE *Time_Out_Signal;
+		if(Current_Partition_status.LOCK_LEVEL != 0 
+			|| Current_Process.ID == ERROR_HANDLER_PROCESS_ID)
+   		{	
+   			*RETURN_CODE = INVALID_MODE;
+   			return;
+   		}
+ 		if(DELAY_TIME > MAX_PREOCESS_DELAY_TIME
+ 			|| DELAY_TIME < INFINITE_TIME_VALUE)
+   		{	
+   			*RETURN_CODE = INVALID_PARAM;
+   			return;
+   		}
+ 		if(DELAY_TIME == INFINITE_TIME_VALUE)
+   		{	
+   			*RETURN_CODE = INVALID_PARAM;
+   			return;
+   		}
+
+ 		if(DELAY_TIME == 0)
+   			_Ask_For_Scheduling();
+ 		else
+ 		{
+  			Running_Processes_set = Running_Processes_set -- {Current_Process};
+  			Waiting_Processes_set = Waiting_Processes_set \-/ {Current_Process};
+   			
+   			Current_Process.STATUS.PROCESS_STATE = WAITING;
+   			_CREATE_TIME_COUNTER(DELAY_TIME,Current_Process.ID,Time_Out_Signal);
+   			_Ask_For_Process_Scheduling();
+		}
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+
+
+/* 	       PERIODIC_WAIT                 */
+
+	 void PERIODIC_WAIT (
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+		if(Current_Partition_status.LOCK_LEVEL != 0 
+			|| Current_Process.ID == ERROR_HANDLER_PROCESS_ID)
+		{	
+			*RETURN_CODE = INVALID_MODE;
+			return;
+		}
+ 		if(Current_Process.STATUS.ATTRS.PERIOD == INFINITE_TIME_VALUE)
+   		{	
+   			*RETURN_CODE = INVALID_MODE;
+   			return;
+		}
+
+ 		Current_Process.STATUS.PROCESS_STATE = WAITING;
+ 		NEXT_RELEASE_POINT = Current_Process.STATUS.ATTRS.PERIOD +
+                          	PREVIOUS_RELEASE_POINT;
+ 		Current_Process.STATUS.DEADLINE_TIME = NEXT_RELEASE_POINT +
+                          Current_Process.STATUS.ATTRS.TIME_CAPACITY;
+ 		_Ask_For_Process_Scheduling();
+ 		*RETURN_CODE = NO_ERROR;
+ 		return;
+}
+
+
+/* 	              GET_TIME               */
+
+	 void GET_TIME (
+		 SYSTEM_TIME_TYPE *SYSTEM_TIME,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		*SYSTEM_TIME = _Current_System_Clock();
+  		*RETURN_CODE = NO_ERROR;
+  		return;
+	}
+
+
+/* 	             REPLENISH               */
+
+	 void REPLENISH (
+		 SYSTEM_TIME_TYPE BUDGET_TIME,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		SYSTEM_TIME_TYPE NEW_DEADLINE_TIME;
+
+  		if(Current_Process.ID == ERROR_HANDLER_PROCESS_ID
+			|| Current_Partition_status.OPERATING_MODE != NORMAL)
+   		{	
+   			*RETURN_CODE = NO_ACTION;
+   			return;
+   		}
+
+ 		NEW_DEADLINE_TIME = _Current_System_Clock() + BUDGET_TIME;
+
+ 		if(Current_Process.STATUS.ATTRS.PERIOD != INFINITE_TIME_VALUE
+			&& NEW_DEADLINE_TIME > NEXT_RELEASE_POINT)// release point
+   		{	
+   			*RETURN_CODE = INVALID_MODE;
+   			return;
+   		}
+ 		if(BUDGET_TIME > MAX_BUDGET_TIME )
+  		{	
+  			*RETURN_CODE = INVALID_PARAM;
+  			return;
+  		}
+
+ 		Current_Process.STATUS.DEADLINE_TIME = NEW_DEADLINE_TIME;
+ 		*RETURN_CODE = NO_ERROR;
+ 		return;
+	}
+
+
+/* 	       END OF OPERATIONS                  */
+
+END

@@ -1,0 +1,286 @@
+MACHINE SamplingManagement
+
+INCLUDE "Types.bs";
+INCLUDE "ModularManagement.bs";
+INCLUDE "PartitionManagement.bs";
+INCLUDE "ProcessManagement.bs";
+INCLUDE "TimeManagement.bs";
+INCLUDE "PartitionManagement.bs";
+
+ATTRIBUTES
+
+	MESSAGE_ADDR_TYPE PORT_MESSAGE_ADDR;
+	int SYSTEM_NUMBER_OF_SAMPLING_PORTS;
+	set<CONFIGURATION_TYPE>@List@ Configuration_table;
+	PARTITION_NAME_TYPE PARTITION_NAME;
+	set<SAMPLING_PORT_TYPE>@List@ Sampling_Set;
+
+OPERATIONS
+
+/* 	       CREATE_SAMPLING_PORT          */
+
+	 void CREATE_SAMPLING_PORT (
+		/*in */ SAMPLING_PORT_NAME_TYPE SAMPLING_PORT_NAME,
+		/*in */ MESSAGE_SIZE_TYPE MAX_MESSAGE_SIZE,
+		/*in */ PORT_DIRECTION_TYPE PORT_DIRECTION,
+		/*in */ SYSTEM_TIME_TYPE REFRESH_PERIOD,
+		/*out*/ SAMPLING_PORT_ID_TYPE *SAMPLING_PORT_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+		PARTITION_STATUS_TYPE Current_Partition_STATUE=<>;
+   		RETURN_CODE_TYPE* RC;
+		if(INVALID_NAME(SAMPLING_PORT_NAME))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_MAX_MESSAGE_SIZE(MAX_MESSAGE_SIZE))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		if(INVALID_PORT_DIRECTION(PORT_DIRECTION))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		if(INVALID_REFRESH_PERIOD(REFRESH_PERIOD))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		if(SYSTEM_NUMBER_OF_SAMPLING_PORTS == MAX_NUMBER_OF_SAMPLING_PORTS )
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+		if(~(any.<NAME: SAMPLING_PORT_NAME,
+					CURRENT_PARTITION_NAME: PARTITION_NAME>:Configuration_table))
+  		{	
+  			*RETURN_CODE = INVALID_CONFIG;
+  			return;
+  		}
+  		
+  		SPortTable.<NAME: SAMPLING_PORT_NAME,
+					CURRENT_PARTITION_NAME: PARTITION_NAME>:Configuration_table;
+		
+  		if(any.<NAME:SAMPLING_PORT_NAME> :Sampling_Set)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+    	}
+					
+  		if(MAX_MESSAGE_SIZE != SPortTable->MAX_MESSAGE_SIZE)
+   		{	
+   			*RETURN_CODE = INVALID_CONFIG;
+   			return;
+   		}
+   		if(PORT_DIRECTION != SPortTable->PORT_DIRECTION)
+   		{	
+   			*RETURN_CODE = INVALID_CONFIG;
+   			return;
+   		}
+   		if(SAMPLING_PORT_NAME != SPortTable->NAME)
+   		{	
+   			*RETURN_CODE = INVALID_CONFIG;
+   			return;
+   		}
+   		
+   		GET_PARTITION_STATUS (&Current_Partition_STATUE,RC);
+ 		if(Current_Partition_STATUE.OPERATING_MODE == NORMAL)
+   		{	
+   			*RETURN_CODE = INVALID_MODE;
+   			return;
+   		}
+
+ 		SPort.<NAME:nil> :Sampling_Set;
+ 		SPort->NAME = SAMPLING_PORT_NAME;
+ 		SPort->REFRESH_PERIOD = REFRESH_PERIOD;
+ 		SPort->MAX_MESSAGE_SIZE = MAX_MESSAGE_SIZE;
+ 		SPort->PORT_DIRECTION = PORT_DIRECTION;
+ 		
+ 		*SAMPLING_PORT_ID = SPort->ID; 
+ 		*RETURN_CODE = NO_ERROR;
+ 		return;
+	}
+
+
+/* 	       WRITE_SAMPLING_MESSAGE        */
+
+	 void WRITE_SAMPLING_MESSAGE (
+		/*in */ SAMPLING_PORT_ID_TYPE SAMPLING_PORT_ID,
+		/*in */ MESSAGE_ADDR_TYPE MESSAGE_ADDR, /* by reference */ 
+		/*in */ MESSAGE_SIZE_TYPE LENGTH,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		MESSAGE_SIZE_TYPE 	TEMP_LENGTH = 0;
+  		
+  		if(INVALID_ID(SAMPLING_PORT_ID))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_MESSAGE_ADDR(MESSAGE_ADDR))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		if(INVALID_LENGTH_(LENGTH))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+  		if(~(any.<ID:SAMPLING_PORT_ID> :Sampling_Set))
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+    	}
+    	
+    	SPort.<ID:SAMPLING_PORT_ID> :Sampling_Set;
+    	
+  		if(SPort->PORT_DIRECTION != SOURCE)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+    	}
+
+  		while(TEMP_LENGTH < LENGTH )
+		{
+  			//*(SPort.MESSAGE_ADDR + TEMP_LENGTH) = *(MESSAGE_ADDR + TEMP_LENGTH);
+  			TEMP_LENGTH = TEMP_LENGTH + 1;
+		}
+		
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+	
+	
+/* 	       READ_SAMPLING_MESSAGE         */
+
+	 void READ_SAMPLING_MESSAGE (
+		/*in */ SAMPLING_PORT_ID_TYPE SAMPLING_PORT_ID,
+		/*inout*/  MESSAGE_ADDR_TYPE MESSAGE_ADDR,
+		/*out*/ MESSAGE_SIZE_TYPE *LENGTH,
+		/*out*/ VALIDITY_TYPE *VALIDITY,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		MESSAGE_SIZE_TYPE 	TEMP_LENGTH = 0;
+  		
+  		if(INVALID_ID(SAMPLING_PORT_ID))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_MESSAGE_ADDR(MESSAGE_ADDR))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		if(~(any.<ID:SAMPLING_PORT_ID> :Sampling_Set))
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+    	}
+    	
+  		SPort.<ID:SAMPLING_PORT_ID> :Sampling_Set;
+  		
+  		if(SPort->PORT_DIRECTION != DESTINATION)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+    	}
+  
+  		if(SPort->EMPTY_INDICATOR == EMPTY)
+  		{
+    		*LENGTH = 0;
+    		*VALIDITY = INVALID;
+    		SPort->LAST_MSG_VALIDITY = INVALID;
+    		
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+  		}
+  		else
+  		{
+    		while(TEMP_LENGTH < SPort->LENGTH )
+			{
+  				//*(MESSAGE_ADDR + TEMP_LENGTH) = *(SPort->MESSAGE_ADDR + TEMP_LENGTH);
+  				TEMP_LENGTH = TEMP_LENGTH + 1;
+			}
+    	
+    		*LENGTH = SPort->LENGTH;
+    		/*
+    		if(age of the copied message is consistent with the required REFRESH_PERIOD
+				attribute of the port)
+    		{
+				*VALIDITY = VALID;
+      			SPort->LAST_MSG_VALIDITY = VALID;
+			}
+    		else
+    		{
+     			*VALIDITY = INVALID;
+      			SPort->LAST_MSG_VALIDITY = INVALID;
+    		}
+    		*/
+    		
+    		*RETURN_CODE = NO_ERROR;
+    		return;
+		}
+	}
+
+/* 	       GET_SAMPLING_PORT_ID          */
+
+	 void GET_SAMPLING_PORT_ID (
+		/*in */ SAMPLING_PORT_NAME_TYPE SAMPLING_PORT_NAME,
+		/*out*/ SAMPLING_PORT_ID_TYPE *SAMPLING_PORT_ID,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_NAME(SAMPLING_PORT_NAME))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		if(~(any.<NAME:SAMPLING_PORT_NAME> :Sampling_Set))
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+  
+  		SPort.<NAME:SAMPLING_PORT_NAME> :Sampling_Set;
+  		
+  		*SAMPLING_PORT_ID = SPort->ID;
+  		*RETURN_CODE = NO_ERROR;
+  		return;
+	}
+  		
+  		
+/* 	       GET_SAMPLING_PORT_STATUS      */
+
+	 void GET_SAMPLING_PORT_STATUS (
+		/*in */ SAMPLING_PORT_ID_TYPE SAMPLING_PORT_ID,
+		/*out*/ SAMPLING_PORT_STATUS_TYPE *SAMPLING_PORT_STATUS,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(SAMPLING_PORT_ID))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(~(any.<ID:SAMPLING_PORT_ID> :Sampling_Set))
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+    	}
+
+  		SPort.<ID:SAMPLING_PORT_ID> :Sampling_Set;
+  		SAMPLING_PORT_STATUS->REFRESH_PERIOD = SPort->REFRESH_PERIOD;
+  		SAMPLING_PORT_STATUS->MAX_MESSAGE_SIZE = SPort->MAX_MESSAGE_SIZE;
+  		SAMPLING_PORT_STATUS->PORT_DIRECTION = SPort->PORT_DIRECTION;
+  		SAMPLING_PORT_STATUS->LAST_MSG_VALIDITY = SPort->LAST_MSG_VALIDITY;
+  		*RETURN_CODE = NO_ERROR;
+  		return;
+	}
+
+/* 	       END OF OPERATIONS                  */
+
+END
+

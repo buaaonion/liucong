@@ -1,0 +1,112 @@
+MACHINE HealthMonitor
+
+INCLUDE "Types.bs";
+INCLUDE "ModularManagement.bs";
+INCLUDE "PartitionManagement.bs";
+INCLUDE "ProcessManagement.bs";
+
+ATTRIBUTES
+	ERROR_STATUS_TYPE ERROR_STATUS;
+
+OPERATIONS
+	
+/*      REPORT_APPLICATION_MESSAGE            */	
+	
+	 void REPORT_APPLICATION_MESSAGE (
+		 MESSAGE_ADDR_TYPE MESSAGE_ADDR,
+		 MESSAGE_SIZE_TYPE LENGTH,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{ 
+  		MESSAGE_SIZE_TYPE TEMP_LENGTH;
+  
+		if(LENGTH > MAX_ERROR_MESSAGE_SIZE)
+    		*RETURN_CODE = INVALID_PARAM;
+
+		TEMP_LENGTH = 0;
+  		while(TEMP_LENGTH < LENGTH)
+  		{
+    		ERROR_STATUS.LENGTH = *(MESSAGE_ADDR + TEMP_LENGTH);
+    		TEMP_LENGTH = TEMP_LENGTH + 1;
+  		}
+  		ERROR_STATUS.LENGTH = LENGTH;
+  		*RETURN_CODE = NO_ERROR;
+	}
+
+
+/* 	       CREATE_ERROR_HANDLER              */
+
+	 void CREATE_ERROR_HANDLER (
+		 SYSTEM_ADDRESS_TYPE ENTRY_POINT,
+		 STACK_SIZE_TYPE STACK_SIZE,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(ERROR_HANDLER_PROCESS != nil)
+    		*RETURN_CODE = NO_ACTION;
+    	/*
+  		if(insufficient storage capacity for the creation of the error handler process)
+    		*RETURN_CODE = INVALID_CONFIG;
+    	
+		if(STACK_SIZE is out of range)
+    		*RETURN_CODE = INVALID_CONFIG;
+    	*/
+  		if(Current_Partition_status.OPERATING_MODE == NORMAL)
+    		*RETURN_CODE = INVALID_MODE;
+  
+  		//_CREATE_PROCESS(the highest priority,ENTRY_POINT,STACK_SIZE); 
+  		*RETURN_CODE = NO_ERROR;
+	}
+
+
+/* 	       GET_ERROR_STATUS               */
+
+	 void GET_ERROR_STATUS (
+		 ERROR_STATUS_TYPE *ERROR_STATUS,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(Current_Process.ID != ERROR_HANDLER_PROCESS_ID)
+    		*RETURN_CODE = INVALID_CONFIG;
+  		if(ERROR_STATUS->FAILED_PROCESS_ID == 0)
+    		*RETURN_CODE = NO_ACTION;
+  
+  		//ERROR_STATUS := error status of the first process in the process error list;
+		//clear this error from the process error list; 
+  		*RETURN_CODE = NO_ERROR;
+	}
+
+
+/* 	       RAISE_APPLICATION_ERROR          */
+
+	 void RAISE_APPLICATION_ERROR (
+		 ERROR_CODE_TYPE ERROR_CODE,
+		 MESSAGE_ADDR_TYPE MESSAGE_ADDR,
+		 ERROR_MESSAGE_SIZE_TYPE LENGTH,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(LENGTH < 0 || LENGTH > MAX_ERROR_MESSAGE_SIZE)
+    		*RETURN_CODE = INVALID_PARAM;
+  		if(ERROR_CODE != APPLICATION_ERROR)
+    		*RETURN_CODE = INVALID_PARAM;
+  
+  
+  		if(Current_Process.ID == ERROR_HANDLER_PROCESS_ID
+			|| ERROR_HANDLER_PROCESS_ID == 0)
+ 		{
+ 		/*
+   			pass the message and error code to the Partition HM;
+			take the recovery action described
+			for the error code in the current Partition HM table;
+		*/ 
+ 		}
+		else
+		{
+  			//start the error handler process for the error code in the current process;
+			_Ask_For_Process_Scheduling(); 
+		}
+  		
+  		*RETURN_CODE = NO_ERROR;
+	}
+
+
+/* 	       END OF OPERATIONS                  */
+
+END

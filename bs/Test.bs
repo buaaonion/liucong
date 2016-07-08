@@ -1,0 +1,27 @@
+MACHINE Test
+
+ATTRIBUTES
+	
+	typedef struct {
+		int name;
+		int age;
+	} student;
+	
+	typedef student liuc;
+	
+	typedef enum{
+		grade1,
+		grade2 = 100
+	}grade;
+	
+	set<student>@Array@ class;
+	
+OPERATIONS
+
+	void function() {
+		if(pro.<name:1>:class) {
+			return;
+		}
+	}
+	
+END

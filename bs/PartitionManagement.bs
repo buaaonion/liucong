@@ -1,0 +1,171 @@
+MACHINE PartitionManagement
+
+INCLUDE "Types.bs";
+INCLUDE "ModularManagement.bs";
+
+ATTRIBUTES
+
+	typedef int NUMBER_OF_PROCESSES_TYPE;
+	PARTITION_STATUS_TYPE Current_Partition_status;
+
+	NUMBER_OF_PROCESSES_TYPE Current_Dormant_Processes_num;
+	NUMBER_OF_PROCESSES_TYPE Current_Ready_Processes_num;
+	NUMBER_OF_PROCESSES_TYPE Current_Running_Processes_num;
+	NUMBER_OF_PROCESSES_TYPE Current_Waiting_Processes_num;
+
+	NUMBER_OF_PROCESSES_TYPE Current_Partition_Processes_num;
+	
+	APEX_INTEGER Current_Parition_Buffers_num;
+	APEX_INTEGER Current_Parition_BBoards_num;
+	APEX_INTEGER Current_Partition_Semaphore_num;
+	APEX_INTEGER Current_Partition_Events_num;
+	//APEX_INTEGER Current_Partition_Events_num;
+	APEX_INTEGER Current_Partition_SPort_num;
+	APEX_INTEGER Current_Partition_QPort_num;
+
+	set<PROCESS_TYPE>@List@ Dormant_Processes_set;
+	set<PROCESS_TYPE>@List@ Ready_Processes_set;
+	set<PROCESS_TYPE>@List@ Running_Processes_set;
+	set<PROCESS_TYPE>@List@ Waiting_Processes_set;
+
+	set<PROCESS_TYPE>@List@ Current_partition_process_set;
+
+	set<BUFFER_TYPE>@List@ Current_partition_buffers_set;
+	set<BLACKBOARD_TYPE>@List@ Current_partition_bboards_set;
+	set<SEMAPHORE_TYPE>@List@ Current_partition_semaphore_set;
+	//set<EVENT_TYPE>@List@ Current_partition_event_set;
+	set<SAMPLING_PORT_TYPE>@List@ Current_partition_sampling_port_set;
+	set<QUEUING_PORT_TYPE>@List@ Current_partition_queuing_port_set;
+
+	set<TIMER_TYPE>@List@ Current_Partition_Timer;
+	
+	
+OPERATIONS
+
+
+void Partition_init() {
+	Current_Partition_status.OPERATING_MODE=WARM_START;
+}
+
+/* 	       GET_PARTITION_STATUS                */
+/* 	       2014-4-11 zhaoxq V1.0               */
+/* 	       2014-4-18 zhaoxq V1.1               */
+
+	void GET_PARTITION_STATUS (
+		/*out*/ PARTITION_STATUS_TYPE *PARTITION_STATUS,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		(*PARTITION_STATUS).PERIOD = Current_Partition_status.PERIOD;
+  		(*PARTITION_STATUS).DURATION = Current_Partition_status.DURATION;
+  		(*PARTITION_STATUS).IDENTIFIER = Current_Partition_status.IDENTIFIER;
+  		(*PARTITION_STATUS).LOCK_LEVEL = Current_Partition_status.LOCK_LEVEL;
+		(*PARTITION_STATUS).OPERATING_MODE = Current_Partition_status.OPERATING_MODE;
+		(*PARTITION_STATUS).START_CONDITION = 
+										Current_Partition_status.START_CONDITION;
+      	*RETURN_CODE = NO_ERROR;
+      	return;
+	}
+	
+	
+/* 	       SET_PARTITION_MODE                  */
+/* 	       2014-4-11 zhaoxq V1.0               */
+/* 	       2014-4-18 zhaoxq V1.1               */
+/* 	       need update                         */
+
+	void SET_PARTITION_MODE (
+		/*in */ OPERATING_MODE_TYPE OPERATING_MODE,
+		/*out*/ RETURN_CODE_TYPE *RETURN_CODE )
+	{
+		NUMBER_OF_PROCESSES_TYPE TEMP_PRO_NUM = 0;
+
+		if(OPERATING_MODE != IDLE && OPERATING_MODE != COLD_START
+			&& OPERATING_MODE != WARM_START && OPERATING_MODE != NORMAL)
+        {	
+        	*RETURN_CODE = INVALID_PARAM;
+        	return;
+        }
+      	if(OPERATING_MODE == NORMAL 
+      		&& Current_Partition_status.OPERATING_MODE == NORMAL)
+        {	
+        	*RETURN_CODE = NO_ACTION;
+        	return;
+        }
+      	if(OPERATING_MODE == WARM_START 
+			&& Current_Partition_status.OPERATING_MODE == COLD_START)
+        {	
+        	*RETURN_CODE = INVALID_MODE;
+        	return;
+        }
+      
+      	Current_Partition_status.OPERATING_MODE = OPERATING_MODE;
+      	if(OPERATING_MODE == IDLE)
+        {
+        	_Shut_Down_Current_Partition(Current_Partition_status.IDENTIFIER);
+        } 
+      	if(OPERATING_MODE == WARM_START || OPERATING_MODE == COLD_START)
+        {
+        	_Inhibit_Process_Scheduling(Current_Partition_status.IDENTIFIER);
+        	_Switch_Back_Initialization_Mode(Current_Partition_status.IDENTIFIER);
+        }
+      	if(OPERATING_MODE == NORMAL)
+      	{
+        	TEMP_PRO_NUM = Current_Partition_Processes_num;
+
+
+/*
+        	while(Pro.<ID:TEMP_PRO_NUM>:Current_partition_process_set)
+			{
+			
+  				if((Pro->PROCESS_STATE == READY 
+					|| Pro->PROCESS_STATE == RUNNING)
+					&& Pro->PERIOD == INFINITE_TIME_VALUE)
+     			{
+       				Pro->STATUS.PROCESS_STATE = READY;
+     			}
+     			
+     			
+     			if(previously delay started aperiodic processes
+					&& Pro.STATUS.ATTRS.PERIOD == INFINITE_TIME_VALUE)
+     			{
+       				Pro.RELEASE_POINT = SYSTEM_CLOCK_TIME + DELAY_TIME ;
+     			}
+     			
+     			if((Pro.STATUS.PROCESS_STATE == READY 
+					|| Pro.STATUS.PROCESS_STATE == RUNNING
+					|| Pro.STATUS.PROCESS_STATE == WAITING)
+					&& Pro.STATUS.ATTRS.PERIOD != INFINITE_TIME_VALUE
+					&& Pro != DELAYED)
+     			{
+       				Pro.RELEASE_POINT  = the partition��s next periodic processing start;
+     			}
+     			if((Pro.STATUS.PROCESS_STATE == READY 
+					|| Pro.STATUS.PROCESS_STATE == RUNNING
+					|| Pro.STATUS.PROCESS_STATE == WAITING)
+					&& Pro.STATUS.ATTRS.PERIOD != INFINITE_TIME_VALUE
+					&& Pro == DELAYED)
+     			{
+       				Pro.RELEASE_POINT = the partition��s next periodic processing start
+										+ DELAY_TIME;
+     			}
+     			
+     			if(Pro->STATUS.PROCESS_STATE != DORMANT)
+     			{
+       				//Pro->STATUS.DEADLINE_TIME = XXXXXXXXXXXXXXX; 
+     			}
+     			TEMP_PRO_NUM = TEMP_PRO_NUM - 1;
+			}
+
+*/
+			Current_Partition_status.LOCK_LEVEL = 0;
+			/*if(Pro.<ID:ERROR_HANDLER_PROCESS_ID>:Current_partition_process_set)
+  				enable the error process for execution and fault processing;*/
+  				
+			//_Activate_Process_Scheduling();
+		}
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+
+/* 	       END OF OPERATIONS                  */
+
+END

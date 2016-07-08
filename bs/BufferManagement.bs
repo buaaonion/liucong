@@ -1,0 +1,411 @@
+MACHINE BufferManagement
+INCLUDE "Types.bs";
+INCLUDE "ModularManagement.bs";
+INCLUDE "PartitionManagement.bs";
+INCLUDE "ProcessManagement.bs";
+INCLUDE "TimeManagement.bs";
+
+ATTRIBUTES
+	int SYSTEM_NUMBER_OF_BUFFERS;
+	set<BUFFER_TYPE>@List@ Buffer_Set;
+	set<WAITING_BUFFER_TYPE>@List@ Waiting_Buffer_Set;
+	TIME_OUT_TYPE *Time_Out_Signal;
+
+OPERATIONS
+	
+/* 	       CREATE_BUFFER                    */	
+	
+	 void CREATE_BUFFER (
+		 BUFFER_NAME_TYPE BUFFER_NAME,
+		 MESSAGE_SIZE_TYPE MAX_MESSAGE_SIZE,
+		 MESSAGE_RANGE_TYPE MAX_NB_MESSAGE,
+		 QUEUING_DISCIPLINE_TYPE QUEUING_DISCIPLINE,
+		 BUFFER_ID_TYPE *BUFFER_ID,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_NAME(BUFFER_NAME))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_MAX_MESSAGE_SIZE(MAX_MESSAGE_SIZE))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		if(INVALID_MAX_NB_MESSAGE(MAX_NB_MESSAGE))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		if(INVALID_QUEUING_DISCIPLINE(QUEUING_DISCIPLINE))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		if(SYSTEM_NUMBER_OF_BUFFERS == SYSTEM_LIMIT_NUMBER_OF_BUFFERS)
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+    	
+    	/*
+  		if(@.<NAME:BLACKBOARD_NAME>:Blackboard_Set)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+    	}
+    	*/
+    	
+      	if(Current_Partition_status.OPERATING_MODE == NORMAL)
+        {	
+        	*RETURN_CODE = INVALID_MODE;
+        	return;
+        }
+
+      	Buff.<NAME:nil> : Buffer_Set;
+		
+		Buff->NAME = BUFFER_NAME;
+		Buff->NB_MESSAGE = 0;
+		Buff->MAX_NB_MESSAGE = MAX_NB_MESSAGE;
+		Buff->MAX_MESSAGE_SIZE = MAX_MESSAGE_SIZE;
+		Buff->WAITING_PROCESSES = 0;
+		Buff->QUEUING_DISCIPLINE = QUEUING_DISCIPLINE; 		
+  		SYSTEM_NUMBER_OF_BUFFERS = SYSTEM_NUMBER_OF_BUFFERS + 1;
+  		
+  		*BUFFER_ID = Buff->ID;
+  		*RETURN_CODE = NO_ERROR;
+	}
+	
+
+/* 	       SEND_BUFFER                    */
+
+	 void SEND_BUFFER (
+		 BUFFER_ID_TYPE BUFFER_ID,
+		 MESSAGE_ADDR_TYPE MESSAGE_ADDR,
+		 MESSAGE_SIZE_TYPE LENGTH,
+		 SYSTEM_TIME_TYPE TIME_OUT,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		MESSAGE_SIZE_TYPE 	TEMP_LENGTH = 0;
+  		INDEX_TYPE			TEMP_INDEX =1;
+  		  		
+  		if(INVALID_ID(BUFFER_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		/*
+		if(~(@.<ID:BUFFER_ID> : Buffer_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		*/
+		
+		Buff.<ID:BUFFER_ID>:Buffer_Set;
+  		
+		if(INVALID_LENGTH(LENGTH, Buff->MAX_MESSAGE_SIZE))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_MESSAGE_ADDR(MESSAGE_ADDR))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_TIME_OUT(TIME_OUT))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		
+  		
+      	if(Buff->NB_MESSAGE < Buff->MAX_NB_MESSAGE)
+      	{
+        	if(Buff->WAITING_PROCESSES == 0 && Buff->NB_MESSAGE == 0 )
+        	{
+        		while(TEMP_LENGTH < LENGTH )
+				{
+  					//*(Buff.FIRST_MESSAGE.MESSAGE_ADDR + TEMP_LENGTH) = *(MESSAGE_ADDR + TEMP_LENGTH);
+  					TEMP_LENGTH = TEMP_LENGTH + 1;
+				}
+				Buff->FIRST_MESSAGE.LENGTH = LENGTH;
+        	}
+        	else
+        	{
+          		WBPro.<BUFFER_ID:Buff->ID, WAIT_TYPE:RECEIVING, INDEX:1> :  Waiting_Buffer_Set;
+          		
+          		while(TEMP_LENGTH < LENGTH )
+				{
+  					//*(WBPro.MESSAGE_ADDR + TEMP_LENGTH) = *(MESSAGE_ADDR + TEMP_LENGTH);
+  					TEMP_LENGTH = TEMP_LENGTH + 1;
+				}
+          		
+          		if(Timer.<ID:WBPro->ID> : Waiting_Timer_Set)
+          		{
+          			_STOP_TIME_COUNTER(Timer->ID); 
+          		}
+          		
+          		Pro.<ID:WBPro->ID> : Process_Set;
+          		Pro->PROCESS_STATE = READY;
+  				Ready_Process_Set=Ready_Process_Set \-/ {Pro->ID};
+  				Waiting_Buffer_Set=Waiting_Buffer_Set -- {WBPro};
+  				Waiting_Process_Set=Waiting_Process_Set -- {Pro->ID};
+          		
+          		if(Current_Partition_status.LOCK_LEVEL == 0)
+    				_Ask_For_Process_Scheduling();
+        	}
+        	*RETURN_CODE = NO_ERROR;
+			return;
+     	}
+     	else if(TIME_OUT == 0)
+     	{
+     		*RETURN_CODE = NOT_AVAILABLE;
+			return;
+     	}
+     	else if(Current_Partition_status.LOCK_LEVEL != 0
+				|| Current_Process.ID == ERROR_HANDLER_PROCESS_ID)
+		{
+			*RETURN_CODE = INVALID_MODE;
+   			return;
+		}
+		else if(TIME_OUT == INFINITE_TIME_VALUE)
+		{
+  			Current_Process.PROCESS_STATE = WAITING;
+  			Running_Process_Set=Running_Process_Set -- {Current_Process.ID};
+  			Waiting_Process_Set=Waiting_Process_Set \-/ {Current_Process.ID};
+  			
+  			//Waiting_Buffer_Set=Waiting_Buffer_Set \-/ {<Current_Process.ID, Buff->ID, SENDING, 
+  			//						MESSAGE_ADDR, LENGTH, Buff->LAST_SEND_INDEX + 1>};
+  			Buff->LAST_SEND_INDEX = Buff->LAST_SEND_INDEX + 1;
+  			
+  			_Ask_For_Process_Scheduling();
+  			
+			*RETURN_CODE = NO_ERROR;
+			return;
+		}
+		else
+		{
+			Current_Process.PROCESS_STATE = WAITING;
+  			Running_Process_Set=Running_Process_Set -- {Current_Process.ID};
+  			Waiting_Process_Set=Waiting_Process_Set \-/ {Current_Process.ID};
+  			
+  			//Waiting_Buffer_Set=Waiting_Buffer_Set \-/ {<Current_Process.ID, Buff->ID, SENDING, 
+  			//						MESSAGE_ADDR, LENGTH, Buff->LAST_SEND_INDEX + 1>};
+  			Buff->LAST_SEND_INDEX = Buff->LAST_SEND_INDEX + 1;
+  			
+  			_CREATE_TIME_COUNTER(TIME_OUT, Current_Process.ID, Time_Out_Signal);
+  			
+  			_Ask_For_Process_Scheduling();		
+			
+			if(*Time_Out_Signal == TRUE)
+			{
+				*RETURN_CODE = TIMED_OUT;
+				return;
+			}
+			else
+			{
+				*RETURN_CODE = NO_ERROR;
+				return;
+			}
+		}
+	}
+	
+
+/* 	       RECEIVE_BUFFER                    */
+
+	 void RECEIVE_BUFFER (
+		 BUFFER_ID_TYPE BUFFER_ID,
+		 SYSTEM_TIME_TYPE TIME_OUT,
+		 MESSAGE_ADDR_TYPE MESSAGE_ADDR,
+		 MESSAGE_SIZE_TYPE *LENGTH,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+		MESSAGE_SIZE_TYPE 	TEMP_LENGTH = 0;
+  		INDEX_TYPE			TEMP_INDEX =1;
+  		  		
+  		if(INVALID_ID(BUFFER_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_TIME_OUT(TIME_OUT))
+		{
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		
+		/*
+		if(~(@.<ID:BUFFER_ID> : Buffer_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		*/
+		
+		Buff.<ID:BUFFER_ID>:Buffer_Set;
+		
+		if(Buff->NB_MESSAGE != 0)
+		{
+			while(TEMP_LENGTH < Buff->FIRST_MESSAGE.LENGTH )
+			{
+  				//*(MESSAGE_ADDR + TEMP_LENGTH) = *(Buff->FIRST_MESSAGE.MESSAGE_ADDR + TEMP_LENGTH);
+  				//*(Buff.FIRST_MESSAGE.MESSAGE_ADDR + TEMP_LENGTH) = NULL;
+  				TEMP_LENGTH = TEMP_LENGTH + 1;
+			}
+			*LENGTH = Buff->FIRST_MESSAGE.LENGTH;
+
+			if(Buff->NB_MESSAGE > 1)
+			{
+				//Buff->FIRST_MESSAGE = *(Buff->FIRST_MESSAGE.NEXT);
+				Buff->NB_MESSAGE = Buff->NB_MESSAGE - 1;
+			}
+			
+			if(WBPro.<BUFFER_ID:Buff->ID, WAIT_TYPE:SENDING, INDEX:1> : Waiting_Buffer_Set)
+			{
+				TEMP_LENGTH = 0;
+				//Buff->LAST_MESSAGE = *(Buff->LAST_MESSAGE.NEXT);
+				while(TEMP_LENGTH < WBPro->LENGTH)
+				{
+					//*(Buff.LAST_MESSAGE.MESSAGE_ADDR + TEMP_LENGTH) = *(WBPro->MESSAGE_ADDR + TEMP_LENGTH);
+  					TEMP_LENGTH = TEMP_LENGTH + 1;
+				}
+				
+				if(Timer.<ID:WBPro->ID> : Waiting_Timer_Set)
+          		{
+          			_STOP_TIME_COUNTER(Timer->ID); 
+          		}
+          		
+          		Pro.<ID:WBPro->ID> : Process_Set;
+          		Pro->PROCESS_STATE = READY;
+  				Ready_Process_Set=Ready_Process_Set \-/ {Pro->ID};
+  				Waiting_Buffer_Set=Waiting_Buffer_Set -- {WBPro};
+  				Waiting_Process_Set=Waiting_Process_Set -- {Pro->ID};
+          		
+          		if(Current_Partition_status.LOCK_LEVEL == 0)
+    				_Ask_For_Process_Scheduling();
+			}
+			*RETURN_CODE = NO_ERROR;
+			return;	
+		}
+		else if(TIME_OUT == 0)
+     	{
+     		*LENGTH = 0;
+     		*RETURN_CODE = NOT_AVAILABLE;
+			return;
+     	}
+     	else if(Current_Partition_status.LOCK_LEVEL != 0
+				|| Current_Process.ID == ERROR_HANDLER_PROCESS_ID)
+		{
+			*LENGTH = 0;
+			*RETURN_CODE = INVALID_MODE;
+   			return;
+		}
+		else if(TIME_OUT == INFINITE_TIME_VALUE)
+		{
+  			Current_Process.PROCESS_STATE = WAITING;
+  			Running_Process_Set=Running_Process_Set -- {Current_Process.ID};
+  			Waiting_Process_Set=Waiting_Process_Set \-/ {Current_Process.ID};
+  			
+  			/*
+  			Waiting_Buffer_Set=Waiting_Buffer_Set \-/ {<Current_Process.ID, Buff->ID, RECEVING, 
+  									MESSAGE_ADDR, LENGTH, Buff->LAST_RECEVIE_INDEX + 1>};
+  			*/
+  			Buff->LAST_RECEIVE_INDEX = Buff->LAST_RECEIVE_INDEX + 1;
+  			
+  			_Ask_For_Process_Scheduling();
+  			
+			*RETURN_CODE = NO_ERROR;
+			return;
+		}
+		else
+		{
+			Current_Process.PROCESS_STATE = WAITING;
+  			Running_Process_Set=Running_Process_Set -- {Current_Process.ID};
+  			Waiting_Process_Set=Waiting_Process_Set \-/ {Current_Process.ID};
+  			
+  			/*
+  			Waiting_Buffer_Set=Waiting_Buffer_Set \-/ {<Current_Process.ID, Buff->ID, RECEVING, 
+  									MESSAGE_ADDR, LENGTH, Buff->LAST_RECEVIE_INDEX + 1>};
+  			*/
+  			Buff->LAST_RECEIVE_INDEX = Buff->LAST_RECEIVE_INDEX + 1;
+  			
+  			_CREATE_TIME_COUNTER(TIME_OUT, Current_Process.ID, Time_Out_Signal);
+  			
+  			_Ask_For_Process_Scheduling();		
+			
+			if(*Time_Out_Signal == TRUE)
+			{
+				*LENGTH = 0;
+				*RETURN_CODE = TIMED_OUT;
+				return;
+			}
+			else
+			{
+				*RETURN_CODE = NO_ERROR;
+				return;
+			}
+		}
+	}
+/* 	       GET_BUFFER_ID                    */
+
+	 void GET_BUFFER_ID (
+		 BUFFER_NAME_TYPE BUFFER_NAME,
+		 BUFFER_ID_TYPE *BUFFER_ID,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_NAME(BUFFER_NAME))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		/*
+		if(~(@.<NAME:BUFFER_NAME>:Buffer_Set))
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+    	*/
+    	
+		Buff.<NAME:BUFFER_NAME>:Buffer_Set;
+
+  		*BUFFER_ID = Buff->ID;
+  		*RETURN_CODE = NO_ERROR;
+	}
+
+/*	       GET_BUFFER_STATUS                 */
+
+	 void GET_BUFFER_STATUS (
+		 BUFFER_ID_TYPE BUFFER_ID,
+		 BUFFER_STATUS_TYPE *BUFFER_STATUS,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(BUFFER_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		
+		/*
+		if(~(@.<ID:BUFFER_ID> : Buffer_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		*/
+		
+		Buff.<ID:BUFFER_ID>:Buffer_Set;
+	
+  		BUFFER_STATUS->NB_MESSAGE = Buff->NB_MESSAGE;
+  		BUFFER_STATUS->MAX_NB_MESSAGE = Buff->MAX_NB_MESSAGE;
+  		BUFFER_STATUS->MAX_MESSAGE_SIZE = Buff->MAX_MESSAGE_SIZE;
+  		BUFFER_STATUS->WAITING_PROCESSES = Buff->WAITING_PROCESSES;
+  		*RETURN_CODE = NO_ERROR;
+	}
+	
+
+
+END
+

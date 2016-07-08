@@ -1,0 +1,686 @@
+MACHINE ProcessManagement
+
+INCLUDE "ModularManagement.bs";
+INCLUDE "Types.bs";
+INCLUDE "PartitionManagement.bs";
+
+ATTRIBUTES
+	PROCESS_TYPE Current_Process;
+	PROCESS_TYPE First_Process;
+	PROCESS_TYPE Previous_Process;
+	PROCESS_TYPE Error_Handler_Preempted_Process;
+	PROCESS_TYPE *ERROR_HANDLER_PROCESS;
+	PROCESS_NAME_TYPE NULL_NAME = "";
+	set<PROCESS_TYPE>@List@ Process_Buffer;
+	set<PROCESS_TYPE>@List@ Process_Set;
+	set<PROCESS_TYPE>@List@ Ready_Process_Set;
+	set<PROCESS_TYPE>@List@ Process_Queue_Set;
+	set<PROCESS_TYPE>@List@ Waiting_Process_Set;
+	set<PROCESS_TYPE>@List@ Running_Process_Set;
+	set<PROCESS_TYPE>@List@ WaitingQueue;
+	int SYSTEM_NUMBER_OF_PROCESS=0;
+
+OPERATIONS
+		
+	void CREATE_PROCESS (
+		PROCESS_ATTRIBUTE_TYPE *ATTRS,
+		 PROCESS_ID_TYPE *PROCESS_ID,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_NAME((*ATTRS).NAME ))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		
+		if(INVALID_STACK_SIZE((*ATTRS).STACK_SIZE ))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+
+  		if(INVALID_BASE_PRIORITY((*ATTRS).BASE_PRIORITY)) 
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		
+  		if(INVALID_PERIOD ((*ATTRS).PERIOD)) 
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		
+  		if(INVALID_TIME_CAPACITY ((*ATTRS).TIME_CAPACITY, (*ATTRS).PERIOD))
+  		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+    
+		if(Current_Partition_status.OPERATING_MODE == NORMAL)
+		{
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+		}
+		
+		if(SYSTEM_NUMBER_OF_PROCESS == SYSTEM_LIMIT_NUMBER_OF_PROCESSES)
+		{
+        	*RETURN_CODE = INVALID_CONFIG;
+			return;
+		}
+		
+		if(Pro.<NAME: (*ATTRS).NAME > : Process_Set)
+		{
+    		*RETURN_CODE =NO_ACTION;
+    		return;
+		}
+
+		if(~(Pro.<NAME:NULL_NAME> : Process_Set))
+		{
+        	*RETURN_CODE = INVALID_CONFIG;
+			return;
+		}
+    
+		Pro->NAME = ATTRS->NAME;
+    	Pro->PERIOD = ATTRS->PERIOD;
+		Pro->TIME_CAPACITY = ATTRS->TIME_CAPACITY ;
+		Pro->ENTRY_POINT = ATTRS->ENTRY_POINT;
+		Pro->STACK_SIZE = ATTRS->STACK_SIZE;
+		Pro->BASE_PRIORITY = ATTRS->BASE_PRIORITY;
+		Pro->DEADLINE = ATTRS->DEADLINE;
+		Pro->PROCESS_STATE = DORMANT;
+		Pro->ID=SYSTEM_NUMBER_OF_PROCESS;
+
+		_Initialize_Process_Context(Pro->ID);
+		_Initialize_Process_Stack(Pro->ID); 
+		
+		//Current_partition_process_set =Current_partition_process_set\-/ {Pro->ID};
+		//Dormant_Processes_set ++ Pro->ID;
+		SYSTEM_NUMBER_OF_PROCESS = SYSTEM_NUMBER_OF_PROCESS + 1;
+				
+		*PROCESS_ID = Pro->ID;
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+
+
+	void GET_PROCESS_ID (
+		PROCESS_NAME_TYPE PROCESS_NAME,
+		PROCESS_ID_TYPE *PROCESS_ID,
+		RETURN_CODE_TYPE *RETURN_CODE )
+	{
+ 		if(INVALID_NAME(PROCESS_NAME))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+/*
+		if(~(@.<NAME:PROCESS_NAME> : Process_Set))
+		{	
+			*RETURN_CODE = INVALID_CONFIG;
+			return;
+		}
+*/
+		if(~(Pro.<NAME:PROCESS_NAME> : Process_Set)){
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		*PROCESS_ID = Pro->ID;
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+	
+
+	void GET_PROCESS_STATUS (
+		PROCESS_ID_TYPE PROCESS_ID,
+		PROCESS_STATUS_TYPE *PROCESS_STATUS,
+		RETURN_CODE_TYPE *RETURN_CODE )
+	{
+		if(INVALID_ID(PROCESS_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		
+		/*
+		if(~(@.<ID:PROCESS_ID> : Process_Set))
+		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		*/
+		
+		Pro.<ID:PROCESS_ID> : Process_Set;
+		
+		PROCESS_STATUS->DEADLINE_TIME = Pro->DEADLINE_TIME;
+		PROCESS_STATUS->CURRENT_PRIORITY = Pro->CURRENT_PRIORITY;
+		PROCESS_STATUS->PROCESS_STATE = Pro->PROCESS_STATE;
+		PROCESS_STATUS->PERIOD = Pro->PERIOD;
+		PROCESS_STATUS->TIME_CAPACITY = Pro->TIME_CAPACITY;
+		PROCESS_STATUS->ENTRY_POINT = Pro->ENTRY_POINT;
+		PROCESS_STATUS->STACK_SIZE = Pro->STACK_SIZE;
+		PROCESS_STATUS->BASE_PRIORITY = Pro->BASE_PRIORITY;
+		PROCESS_STATUS->DEADLINE = Pro->DEADLINE;
+		PROCESS_STATUS->NAME = Pro->NAME;
+
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+	
+	
+		
+	void SET_PRIORITY (
+		PROCESS_ID_TYPE PROCESS_ID,
+		PRIORITY_TYPE PRIORITY,
+		RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(PROCESS_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		if(INVALID_PRIORITY(PRIORITY))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		
+		/*
+  		if(~(@.<ID:PROCESS_ID> : Process_Set))
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		*/
+		
+		Pro.<ID:PROCESS_ID> : Process_Set;
+		
+  		if(Pro->STATUS.PROCESS_STATE == DORMANT)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+		}
+
+  		Pro->CURRENT_PRIORITY = PRIORITY;
+  
+  		if(Current_Partition_status.LOCK_LEVEL == 0)
+    		_Ask_For_Process_Scheduling();
+
+  		*RETURN_CODE = NO_ERROR;
+  		return;
+	}
+	
+	
+/* 	       SUSPEND_SELF                 */
+
+	void SUSPEND_SELF (
+		SYSTEM_TIME_TYPE TIME_OUT,
+		RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		TIME_OUT_TYPE *Time_Out_Signal;
+  
+		if(INVALID_TIME_OUT(TIME_OUT))
+		{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		
+		if(Current_Partition_status.LOCK_LEVEL != 0 
+			|| Current_Process.ID == ERROR_HANDLER_PROCESS_ID)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+		}
+  		
+  		if(Current_Process.PERIOD != INFINITE_TIME_VALUE)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+		}
+  
+  
+  		if(TIME_OUT == 0)
+    	{	
+    		*RETURN_CODE = NO_ERROR;
+    		return;
+		}
+  		else
+		{
+  			//the waiting set should be re-design
+  			Current_Process.STATUS.PROCESS_STATE = WAITING;
+  			Waiting_Processes_set=Waiting_Processes_set \-/ {Current_Process.ID};
+  			
+  			/*
+  			if(TIME_OUT != INFINITE_TIME_VALUE)
+    			_CREATE_TIME_COUNTER(TIME_OUT, Current_Process.ID, *Time_Out_Signal);
+  			*/
+  			
+  			_Ask_For_Process_Scheduling();
+  			
+  			if(*Time_Out_Signal == TRUE)
+    		{	
+    			*RETURN_CODE = TIMED_OUT;
+    			return;
+			}
+  			else
+  			{
+    			*RETURN_CODE = NO_ERROR;
+    			return;
+  			}
+		}
+	}
+	
+
+/* 	       SUSPEND                       */
+
+	void SUSPEND (
+		PROCESS_ID_TYPE PROCESS_ID,
+		RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(PROCESS_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		
+  		if(Current_Partition_status.LOCK_LEVEL != 0 
+  			&& PROCESS_ID == ERROR_HANDLER_PROCESS_ID)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+		}
+		
+		/*
+  		if(~(@.<ID:PROCESS_ID> : Process_Set) 
+  			|| PROCESS_ID == Current_Process.ID)
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		*/
+		
+		Pro.<ID:PROCESS_ID> : Process_Set;
+		
+  		if(Pro->PROCESS_STATE == DORMANT)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+		}
+		
+  		if(Pro->PERIOD != INFINITE_TIME_VALUE)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+		}
+  
+  		if(Pro->PROCESS_STATE == WAITING)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+		}
+  		else
+		{
+  			Pro->PROCESS_STATE = WAITING;
+  			Ready_Processes_set=Ready_Processes_set -- {Pro->ID};
+  			Waiting_Processes_set=Waiting_Processes_set \-/ {Pro->ID};
+  			*RETURN_CODE = NO_ERROR;
+  			return;
+		}
+	}
+	
+
+/* 	       RESUME                        */
+	void RESUME (
+		PROCESS_ID_TYPE PROCESS_ID,
+		RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(PROCESS_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		
+  		/*
+  		if(~(@.<ID:PROCESS_ID> : Process_Set)
+  			|| PROCESS_ID == Current_Process.ID)
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+		*/
+		
+		Pro.<ID:PROCESS_ID> : Process_Set;
+		
+  		if(Pro->PROCESS_STATE == DORMANT)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+		}
+  		if(Pro->PERIOD != INFINITE_TIME_VALUE)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+		}
+  		if(Pro->PROCESS_STATE != WAITING)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+		}
+  
+  		if(Timer.<ID:PROCESS_ID> : Current_Partition_Timer)
+    		_STOP_TIME_COUNTER(PROCESS_ID);
+    		
+  		if(PROCESS_ID : Process_Queue_Set)
+  		//or TIMED_WAIT time delay
+  		{
+    		Pro->PROCESS_STATE = READY;
+    		Waiting_Processes_set=Waiting_Processes_set -- {Pro->ID};
+    		Ready_Processes_set=Ready_Processes_set \-/ {Pro->ID};
+    		
+    		if(Current_Partition_status.LOCK_LEVEL == 0)
+      			_Ask_For_Process_Scheduling();
+		}
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+	
+
+/*	       STOP_SELF                     */
+	void STOP_SELF ()
+	{
+  		if(Current_Process.ID != ERROR_HANDLER_PROCESS_ID)
+    		Current_Partition_status.LOCK_LEVEL = 0;
+  
+  		Current_Process.STATUS.PROCESS_STATE = DORMANT;
+  		Running_Processes_set=Running_Processes_set -- {Current_Process.ID};
+  		Dormant_Processes_set=Dormant_Processes_set \-/ {Current_Process.ID};
+
+  		if(Current_Process.ID == ERROR_HANDLER_PROCESS_ID 
+			&& Current_Partition_status.LOCK_LEVEL != 0
+			&& Previous_Process.STATUS.PROCESS_STATE != DORMANT)
+			return; //to previous process;
+		else
+		{	
+			_Ask_For_Process_Scheduling();
+			return;
+		}
+	}
+	
+
+/* 	       STOP                          */
+	void STOP (
+		PROCESS_ID_TYPE PROCESS_ID,
+		RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(PROCESS_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		if(~(Pro.<ID:PROCESS_ID> : Process_Set) 
+  			|| PROCESS_ID == Current_Process.ID)
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+  		if(Pro->PROCESS_STATE == DORMANT)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+		}
+
+  		if(Pro->STATUS.PROCESS_STATE == READY)
+  			Ready_Processes_set=Ready_Processes_set -- {Pro->ID};
+  		else if(Pro->STATUS.PROCESS_STATE == WAITING)
+  			Waiting_Processes_set=Waiting_Processes_set -- {Pro->ID};
+  			
+  		Pro->STATUS.PROCESS_STATE = DORMANT;
+  		Dormant_Processes_set=Dormant_Processes_set \-/ {Pro};
+  		
+  		if(Current_Process.ID == ERROR_HANDLER_PROCESS_ID
+			&& PROCESS_ID == Previous_Process.ID)
+			Current_Partition_status.LOCK_LEVEL = 0;
+			
+		if(Pro1.<ID:PROCESS_ID> : WaitingQueue){
+   			WaitingQueue =WaitingQueue-- {PROCESS_ID};
+   		} 
+		if(Timer.<ID:PROCESS_ID> : Current_Partition_Timer)
+    		_STOP_TIME_COUNTER(PROCESS_ID);
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+
+
+/* 	       START                         */
+	void START (
+		PROCESS_ID_TYPE PROCESS_ID,
+		RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(PROCESS_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		if(~(Pro.<ID:PROCESS_ID> : Process_Set))
+    	{	
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+		}
+  		if(Pro->STATUS.PROCESS_STATE != DORMANT)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+		}
+  		
+
+  		if(Pro->PERIOD == INFINITE_TIME_VALUE)
+		{
+			Pro->CURRENT_PRIORITY = Pro->BASE_PRIORITY;
+			_Initialize_Process_Context(Pro->ID);
+			_Initialize_Process_Stack(Pro->ID);
+			
+			Dormant_Processes_set=Dormant_Processes_set -- {Pro->ID};
+			 
+			if(Current_Partition_status.OPERATING_MODE == NORMAL)
+			{
+				Pro->PROCESS_STATE = READY;
+				Ready_Processes_set=Ready_Processes_set \-/ {Pro->ID};
+				Pro->DEADLINE_TIME = _Current_System_Clock() + 
+										Pro->TIME_CAPACITY;
+				if(Current_Partition_status.LOCK_LEVEL == 0)
+    				_Ask_For_Process_Scheduling();
+			}
+			else
+			{
+				Pro->PROCESS_STATE = WAITING;
+				Waiting_Processes_set=Waiting_Processes_set \-/ {Pro->ID};
+			}
+			*RETURN_CODE = NO_ERROR;
+			return;
+		}
+		else
+		{
+  			Pro->CURRENT_PRIORITY = Pro->BASE_PRIORITY;
+			_Initialize_Process_Context(Pro->ID);
+			_Initialize_Process_Stack(Pro->ID);
+			
+			Dormant_Processes_set=Dormant_Processes_set -- {Pro->ID};
+			 
+			if(Current_Partition_status.OPERATING_MODE == NORMAL)
+			{
+				Pro->STATUS.PROCESS_STATE = WAITING;
+				Waiting_Processes_set=Waiting_Processes_set \-/ {Pro->ID};
+				
+				//set the first release point of the specified process; 
+				Pro->DEADLINE_TIME = _FIRST_RELEASE_POINT() +
+										Pro->TIME_CAPACITY;
+			}
+			else
+			{	
+				Pro->PROCESS_STATE = WAITING;
+				Waiting_Processes_set=Waiting_Processes_set \-/ {Pro->ID};
+			}
+			*RETURN_CODE = NO_ERROR;
+			return;
+		}
+	}
+	
+
+/* 	       DELAYED_START                 */
+	void DELAYED_START (
+		 PROCESS_ID_TYPE PROCESS_ID,
+		 SYSTEM_TIME_TYPE DELAY_TIME,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(INVALID_ID(PROCESS_ID))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+		if(INVALID_DELAY_TIME(DELAY_TIME))
+ 		{	
+			*RETURN_CODE = INVALID_PARAM;
+			return;
+		}
+  		if(~(Pro.<ID:PROCESS_ID> : Process_Set))
+    	{
+    		*RETURN_CODE = INVALID_PARAM;
+    		return;
+    	}
+  		if(Pro->PROCESS_STATE != DORMANT)
+    	{
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+    	}
+  		
+  		//if(DEADLINE_TIME calculation is out of range) 
+    	//	*RETURN_CODE = INVALID_CONFIG;
+
+  		if(Pro->PERIOD == INFINITE_TIME_VALUE)
+		{
+			Pro->CURRENT_PRIORITY = Pro->BASE_PRIORITY;
+			
+			_Initialize_Process_Context(Pro->ID);
+			_Initialize_Process_Stack(Pro->ID);
+			 
+			if(Current_Partition_status.OPERATING_MODE == NORMAL)
+			{
+				if(DELAY_TIME == 0)
+				{
+					Pro->PROCESS_STATE = READY;
+					Dormant_Processes_set=Dormant_Processes_set -- {Pro->ID};
+					Ready_Processes_set=Ready_Processes_set \-/ {Pro->ID};
+					
+					Pro->DEADLINE_TIME = _Current_System_Clock() + 
+											Pro->TIME_CAPACITY;
+				}
+				else
+				{
+					Pro->PROCESS_STATE = WAITING;
+					Dormant_Processes_set=Dormant_Processes_set -- {Pro->ID};
+					Waiting_Processes_set=Waiting_Processes_set \-/ {Pro->ID};
+					Pro->DEADLINE_TIME = _Current_System_Clock() + 
+										Pro->TIME_CAPACITY + DELAY_TIME;
+				}
+				if(Current_Partition_status.LOCK_LEVEL == 0)
+    				_Ask_For_Process_Scheduling();
+			}
+			else
+			{	
+				Pro->PROCESS_STATE = WAITING;
+				Dormant_Processes_set=Dormant_Processes_set -- {Pro->ID};
+				Waiting_Processes_set=Waiting_Processes_set \-/ {Pro->ID};
+			}
+			*RETURN_CODE = NO_ERROR;
+			return;
+		}
+		else
+		{
+  			Pro->CURRENT_PRIORITY = Pro->BASE_PRIORITY;
+			_Initialize_Process_Context(Pro->ID);
+			_Initialize_Process_Stack(Pro->ID); 
+			if(Current_Partition_status.OPERATING_MODE == NORMAL)
+			{
+				Pro->PROCESS_STATE = WAITING;
+				Dormant_Processes_set=Dormant_Processes_set -- {Pro->ID};
+				Waiting_Processes_set=Waiting_Processes_set \-/ {Pro->ID};
+				//set the first release point of the specified process including the delay; 
+				Pro->DEADLINE_TIME = _FIRST_RELEASE_POINT() +
+									Pro->TIME_CAPACITY;
+			}
+			else
+			{	
+				Pro->PROCESS_STATE = WAITING;
+				Dormant_Processes_set=Dormant_Processes_set -- {Pro->ID};
+				Waiting_Processes_set=Waiting_Processes_set \-/ {Pro->ID};
+			}
+			*RETURN_CODE = NO_ERROR;
+			return;
+		}
+	}
+
+/* 	       LOCK_PREEMPTION               */
+	void LOCK_PREEMPTION (
+		 LOCK_LEVEL_TYPE *LOCK_LEVEL,
+		 RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(Current_Process.ID == ERROR_HANDLER_PROCESS_ID
+			|| Current_Partition_status.OPERATING_MODE != NORMAL)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+    	}
+  		if(Current_Partition_status.LOCK_LEVEL >= MAX_LOCK_LEVEL)
+    	{	
+    		*RETURN_CODE = INVALID_CONFIG;
+    		return;
+    	}
+  
+ 		Current_Partition_status.LOCK_LEVEL = 
+ 		 									Current_Partition_status.LOCK_LEVEL + 1;
+		*LOCK_LEVEL = Current_Partition_status.LOCK_LEVEL;
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+		
+
+/* 	      UNLOCK_PREEMPTION              */
+	void UNLOCK_PREEMPTION (
+		LOCK_LEVEL_TYPE *LOCK_LEVEL,
+		RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(Current_Process.ID == ERROR_HANDLER_PROCESS_ID
+			|| Current_Partition_status.OPERATING_MODE != NORMAL
+			|| Current_Partition_status.LOCK_LEVEL == 0)
+    	{	
+    		*RETURN_CODE = NO_ACTION;
+    		return;
+    	}
+  
+  		Current_Partition_status.LOCK_LEVEL =
+  							Current_Partition_status.LOCK_LEVEL - 1;
+		if(Current_Partition_status.LOCK_LEVEL == 0)
+			_Ask_For_Process_Scheduling();
+		*LOCK_LEVEL = Current_Partition_status.LOCK_LEVEL;
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+
+
+/* 	      GET_MY_ID                      */
+	void GET_MY_ID (
+		PROCESS_ID_TYPE *PROCESS_ID,
+		RETURN_CODE_TYPE *RETURN_CODE )
+	{
+  		if(Current_Process.ID == ERROR_HANDLER_PROCESS_ID)
+    	{	
+    		*RETURN_CODE = INVALID_MODE;
+    		return;
+    	}
+  
+		*PROCESS_ID = Current_Process.ID;
+		*RETURN_CODE = NO_ERROR;
+		return;
+	}
+	
+END

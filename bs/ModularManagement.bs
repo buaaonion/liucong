@@ -1,0 +1,200 @@
+MACHINE ModularManagement
+
+INCLUDE "Types.bs";
+
+OPERATIONS
+
+
+	proposition INVALID_NAME (
+		 PROCESS_NAME_TYPE name )
+	{
+		return false;
+	}
+	
+	proposition INVALID_ID (
+		 PROCESS_ID_TYPE id )
+	{
+		return false;
+	}
+	
+	proposition INVALID_STACK_SIZE (
+		 STACK_SIZE_TYPE size )
+	{
+		return false;
+	}
+	
+	proposition INVALID_SEMAPHORE_CURRENT_VALUE (
+		 int a1,int a2 )
+	{
+		return false;
+	}
+	proposition INVALID_SEMAPHORE_MAXIMUM_VALUE (
+		 int a )
+	{
+		return false;
+	}
+	
+	proposition INVALID_MAX_NB_MESSAGE (
+		 STACK_SIZE_TYPE size )
+	{
+		return false;
+	}
+	proposition INVALID_PORT_DIRECTION (
+		 PORT_DIRECTION_TYPE PORT_DIRECTION )
+	{
+		return false;
+	}
+	
+	proposition INVALID_MESSAGE_ADDR (
+		 MESSAGE_ADDR_TYPE size )
+	{
+		return false;
+	}
+	
+	proposition INVALID_MAX_MESSAGE_SIZE (
+		 STACK_SIZE_TYPE size )
+	{
+		return false;
+	}
+	
+	proposition INVALID_QUEUING_DISCIPLINE (
+		 QUEUING_DISCIPLINE_TYPE QUEUING_DISCIPLINE )
+	{
+		return false;
+	}
+	
+	proposition INVALID_BASE_PRIORITY (
+		 PRIORITY_TYPE pri )
+	{
+		return false;
+	}
+	
+	proposition INVALID_PRIORITY (
+		 PRIORITY_TYPE pri )
+	{
+		return false;
+	}
+	
+	proposition INVALID_PERIOD (
+		 SYSTEM_TIME_TYPE period )
+	{
+		return false;
+	}
+	
+	proposition INVALID_REFRESH_PERIOD (
+		 SYSTEM_TIME_TYPE period )
+	{
+		return false;
+	}
+	
+	proposition INVALID_TIME_CAPACITY (
+		 SYSTEM_TIME_TYPE time, SYSTEM_TIME_TYPE period )
+	{
+		return false;
+	}
+	
+	proposition INVALID_LENGTH (
+		 SYSTEM_TIME_TYPE time, SYSTEM_TIME_TYPE period )
+	{
+		return false;
+	}
+	
+	proposition INVALID_LENGTH_(SYSTEM_TIME_TYPE period)
+	{
+		return false;
+	}
+	
+	proposition INVALID_TIME_OUT (
+		 SYSTEM_TIME_TYPE time)
+	{
+		return false;
+	}
+	
+	proposition INVALID_DELAY_TIME (
+		 SYSTEM_TIME_TYPE time)
+	{
+		return false;
+	}
+	
+	
+	/* 	      Inhibit_Process_Scheduling              */
+
+	void _Inhibit_Process_Scheduling (
+		 PARTITION_ID_TYPE PARTITION_ID )
+	{
+	}
+	
+/* 	      Shut_Down_Current_Partition             */
+	void _Shut_Down_Current_Partition (
+		 PARTITION_ID_TYPE PARTITION_ID )
+	{
+	}
+
+
+/* 	      _Switch_Back_Initialization_Mode          */
+	void _Switch_Back_Initialization_Mode (
+		 PARTITION_ID_TYPE PARTITION_ID )
+	{
+	}
+ 
+	
+/*	      Integer_Multiple                        */
+	SYSTEM_TIME_TYPE _Integer_Multiple (
+		SYSTEM_TIME_TYPE INPUT_TIME )
+	{
+		return 0;
+	}
+	
+/* 	      New Process                             */
+	PROCESS_TYPE _New_PROCESS ()
+	{
+		
+	}
+
+/* 	      Initialize Process Context              */
+	void _Initialize_Process_Context (
+		PROCESS_ID_TYPE ID )
+	{
+	}
+	
+/* 	      Initialize Process Stack                */
+	void _Initialize_Process_Stack (
+		 PROCESS_ID_TYPE ID)
+	{
+	}
+	
+/* 	      CREATE_TIME_COUNTER                 */
+	void _CREATE_TIME_COUNTER (
+		 SYSTEM_TIME_TYPE TIME_OUT,
+		 PROCESS_ID_TYPE ID,
+		TIME_OUT_TYPE *Time_Out_Signal)
+	{
+	}
+
+/* 	      STOP_TIME_COUNTER                 */
+	void _STOP_TIME_COUNTER (
+		 PROCESS_ID_TYPE ID)
+	{
+	}
+
+/*	      Current_System_Clock                **/
+	SYSTEM_TIME_TYPE _Current_System_Clock ()
+	{
+			return 0;
+	}
+	
+/* 	      _FIRST_RELEASE_POINT                */
+	SYSTEM_TIME_TYPE _FIRST_RELEASE_POINT ()
+	{
+		return 0;
+	}
+
+/* 	      ROCESS_ID_ASSIGNMENT                 */	
+	PROCESS_ID_TYPE _PROCESS_ID_ASSIGNMENT()
+	{
+		return 0;
+	}
+	
+	void _Ask_For_Process_Scheduling(){}
+	void _Ask_For_Scheduling(){}
+END
